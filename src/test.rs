@@ -3982,3 +3982,78 @@ fn test_verify_campaigns_extends_voting_state_ttl() {
     let campaign = client.get_campaign(&campaign_id);
     assert!(campaign.is_verified);
 }
+
+// Issue #300: verify no panics when claim_revenue / claim_creator_revenue are called
+// after all contributors have been refunded (contribution entries removed from storage).
+#[test]
+fn test_revenue_claim_after_full_refunds_no_panic() {
+    let (env, _admin, creator, contributor1, _, token, token_admin, client) = setup_env();
+
+    token_admin.mint(&contributor1, &5_000);
+
+    let campaign_id = client.create_campaign(&make_params(
+        creator.clone(),
+        String::from_str(&env, "Revenue Refund Test"),
+        String::from_str(&env, "Testing revenue claim after full refund"),
+        1_000,
+        30,
+        Category::EducationalStartup,
+        true,
+        2000, // 20% revenue share
+        0i128,
+    ));
+
+    client.verify_campaign(&campaign_id);
+    client.contribute(&campaign_id, &contributor1, &500);
+
+    // Cancel so the contributor is eligible for a refund
+    client.cancel_campaign(&campaign_id);
+
+    // Contributor claims full refund — removes their contribution entry
+    client.claim_refund(&campaign_id, &contributor1);
+    assert_eq!(token.balance(&contributor1), 5_000);
+
+    // claim_revenue must not panic; contribution is 0 so expect ValidationFailed
+    let res = client.try_claim_revenue(&campaign_id, &contributor1);
+    assert_eq!(res.unwrap_err().unwrap(), Error::ValidationFailed);
+
+    // claim_creator_revenue must not panic; no revenue deposited so expect NoFundsToWithdraw
+    let res = client.try_claim_creator_revenue(&campaign_id);
+    assert_eq!(res.unwrap_err().unwrap(), Error::NoFundsToWithdraw);
+}
+
+// Directly exercises the AmountRaisedIsZero guard in claim_revenue by forcing
+// amount_raised = 0 on the campaign struct while a contribution is still present.
+// This is an artificial state that cannot arise in normal contract flow, but it
+// confirms the guard fires and returns an error rather than dividing by zero.
+#[test]
+fn test_claim_revenue_amount_raised_zero_guard() {
+    let (env, _admin, creator, contributor1, _, _token, token_admin, client) = setup_env();
+
+    token_admin.mint(&contributor1, &5_000);
+
+    let campaign_id = client.create_campaign(&make_params(
+        creator.clone(),
+        String::from_str(&env, "Zero Raised Guard"),
+        String::from_str(&env, "Directly test AmountRaisedIsZero guard"),
+        1_000,
+        30,
+        Category::EducationalStartup,
+        true,
+        2000,
+        0i128,
+    ));
+
+    client.verify_campaign(&campaign_id);
+    client.contribute(&campaign_id, &contributor1, &500);
+
+    // Artificially zero out amount_raised while keeping the contribution in storage
+    env.as_contract(&client.address, || {
+        let mut campaign = get_campaign(&env, campaign_id).unwrap();
+        campaign.amount_raised = 0;
+        set_campaign(&env, campaign_id, &campaign);
+    });
+
+    let res = client.try_claim_revenue(&campaign_id, &contributor1);
+    assert_eq!(res.unwrap_err().unwrap(), Error::AmountRaisedIsZero);
+}

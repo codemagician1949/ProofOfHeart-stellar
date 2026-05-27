@@ -1117,7 +1117,7 @@ impl ProofOfHeart {
             return campaigns;
         }
 
-        let end = start + capped_limit;
+        let end = (start + capped_limit).min(total);
         let num_buckets = (total + CREATOR_CAMPAIGNS_BUCKET_SIZE - 1) / CREATOR_CAMPAIGNS_BUCKET_SIZE;
         let mut global_idx = 0u32;
 
@@ -1748,13 +1748,14 @@ impl ProofOfHeart {
     /// Requires `pending_creator.require_auth()`.
     pub fn accept_campaign_transfer(env: Env, campaign_id: u32) -> Result<(), Error> {
         let mut campaign = get_campaign_or_error(&env, campaign_id)?;
-        Self::require_not_paused(&env)?;
 
         let pending = match campaign.pending_creator.clone() {
             MaybePendingCreator::Some(addr) => addr,
             MaybePendingCreator::None => return Err(Error::NoTransferPending),
         };
         pending.require_auth();
+
+        Self::require_not_paused(&env)?;
 
         bump_instance_ttl(&env);
         let old_creator = campaign.creator.clone();
@@ -1844,16 +1845,17 @@ impl ProofOfHeart {
         let mut campaign = get_creator_campaign(&env, campaign_id)?;
         Self::require_not_paused(&env)?;
 
-        if campaign.pending_creator == MaybePendingCreator::None {
-            return Err(Error::NoTransferPending);
-        }
+        let pending_address = match campaign.pending_creator.clone() {
+            MaybePendingCreator::Some(addr) => addr,
+            MaybePendingCreator::None => return Err(Error::NoTransferPending),
+        };
 
         bump_instance_ttl(&env);
         campaign.pending_creator = MaybePendingCreator::None;
         set_campaign(&env, campaign_id, &campaign);
 
         env.events()
-            .publish(("campaign_transfer_cancelled", campaign_id), ());
+            .publish(("campaign_transfer_cancelled", campaign_id), pending_address);
 
         Ok(())
     }
