@@ -634,7 +634,6 @@ impl ProofOfHeart {
 
         require_active_campaign(&campaign)?;
 
-        bump_instance_ttl(&env);
         if title.len() < CAMPAIGN_TITLE_MIN_LEN || title.len() > CAMPAIGN_TITLE_MAX_LEN {
             return Err(Error::ValidationFailed);
         }
@@ -644,6 +643,7 @@ impl ProofOfHeart {
             return Err(Error::ValidationFailed);
         }
 
+        bump_instance_ttl(&env);
         campaign.title = title.clone();
         campaign.description = description;
 
@@ -1202,15 +1202,13 @@ impl ProofOfHeart {
         let admin = get_admin(&env);
         assert_admin(&env, &admin)?;
         Self::require_not_paused(&env)?;
-        let valid_fee = if new_fee > PLATFORM_FEE_MAX_BPS {
-            PLATFORM_FEE_MAX_BPS
-        } else {
-            new_fee
-        };
+        if new_fee > PLATFORM_FEE_MAX_BPS {
+            return Err(Error::ValidationFailed);
+        }
         let old_fee = get_platform_fee(&env);
         bump_instance_ttl(&env);
-        set_platform_fee(&env, valid_fee);
-        env.events().publish(("fee_updated",), (old_fee, valid_fee));
+        set_platform_fee(&env, new_fee);
+        env.events().publish(("fee_updated",), (old_fee, new_fee));
         Ok(())
     }
 
@@ -1346,7 +1344,8 @@ impl ProofOfHeart {
         if amount < 0 {
             return Err(Error::ValidationFailed);
         }
-        let _campaign = get_campaign_or_error(&env, campaign_id)?;
+        let campaign = get_campaign_or_error(&env, campaign_id)?;
+        require_active_campaign(&campaign)?;
         bump_instance_ttl(&env);
         set_personal_cap(&env, campaign_id, &contributor, amount);
         env.events().publish(
@@ -1659,11 +1658,8 @@ impl ProofOfHeart {
             return campaigns;
         }
 
-        let end = if offset + limit > total {
-            total
-        } else {
-            offset + limit
-        };
+        let capped_limit = limit.min(LIST_MAX_LIMIT);
+        let end = offset.saturating_add(capped_limit).min(total);
 
         let mut position = offset;
         while position < end {
