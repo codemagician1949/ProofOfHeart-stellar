@@ -727,6 +727,11 @@ fn test_multiple_concurrent_campaigns_are_isolated() {
     assert_eq!(client.get_revenue_pool(&campaign_1), 0);
     assert_eq!(client.get_revenue_pool(&campaign_2), 0);
 
+    client.withdraw_funds(&campaign_3);
+    let c3_after_withdraw_funds = client.get_campaign(&campaign_3);
+    assert!(c3_after_withdraw_funds.funds_withdrawn);
+    assert!(!c3_after_withdraw_funds.is_active);
+
     client.deposit_revenue(&campaign_3, &3000);
 
     assert_eq!(client.get_revenue_pool(&campaign_1), 0);
@@ -734,8 +739,8 @@ fn test_multiple_concurrent_campaigns_are_isolated() {
     assert_eq!(client.get_revenue_pool(&campaign_3), 3000);
 
     // Balance checks to ensure campaign operations remained isolated
-    assert_eq!(token.balance(&client.address), 5900);
-    assert_eq!(token.balance(&creator3), 7000);
+    assert_eq!(token.balance(&client.address), 3900);
+    assert_eq!(token.balance(&creator3), 8940);
 }
 
 #[test]
@@ -3062,14 +3067,18 @@ fn test_claim_revenue_blocked_before_funds_withdrawn() {
     });
     client.verify_campaign(&campaign_id);
     client.contribute(&campaign_id, &contributor1, &5000);
-    client.deposit_revenue(&campaign_id, &1000);
 
     // Funds not yet withdrawn — claim must be rejected.
     let res = client.try_claim_revenue(&campaign_id, &contributor1);
     assert_eq!(res.unwrap_err().unwrap(), Error::ValidationFailed);
 
-    // After withdrawal, the same call succeeds.
+    // Revenue deposits are also blocked before withdrawal.
+    let deposit_res = client.try_deposit_revenue(&campaign_id, &1000);
+    assert_eq!(deposit_res.unwrap_err().unwrap(), Error::ValidationFailed);
+
+    // After withdrawal, deposit + claim succeeds.
     client.withdraw_funds(&campaign_id);
+    client.deposit_revenue(&campaign_id, &1000);
     client.claim_revenue(&campaign_id, &contributor1);
     assert!(client.get_revenue_claimed(&campaign_id, &contributor1) > 0);
 }
