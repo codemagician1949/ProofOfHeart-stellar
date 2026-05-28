@@ -330,7 +330,7 @@ impl ProofOfHeart {
         set_creator_campaign_count(&env, &creator, creator_count + 1);
 
         env.events()
-            .publish(("campaign_created", count, creator), title);
+            .publish(("campaign_created", count, creator), (title, category as u32));
 
         Ok(count)
     }
@@ -1399,6 +1399,10 @@ impl ProofOfHeart {
         Ok(())
     }
 
+    fn campaign_start_time_or_error(env: &Env, campaign_id: u32) -> Result<u64, Error> {
+        get_campaign_start_time(env, campaign_id).ok_or(Error::InvalidDuration)
+    }
+
     /// Extends the deadline of a campaign by `additional_days` (creator only).
     ///
     /// Rules:
@@ -1407,6 +1411,8 @@ impl ProofOfHeart {
     /// - Extension must be requested before the original deadline.
     /// - The total duration (original + extension) must not exceed the
     ///   category's duration cap (Option B).
+    /// - Campaigns missing a persisted start time are rejected to avoid
+    ///   silently bypassing category duration caps.
     ///
     /// # Authorization
     /// Requires `campaign.creator.require_auth()`.
@@ -1435,18 +1441,17 @@ impl ProofOfHeart {
             .ok_or(Error::Overflow)?;
 
         // Enforce per-category duration cap (Option B).
-        if let Some(start_time) = get_campaign_start_time(&env, campaign_id) {
-            let category_cap = get_category_duration_cap(&env, campaign.category)
-                .unwrap_or(CAMPAIGN_DURATION_MAX_DAYS);
+        let start_time = Self::campaign_start_time_or_error(&env, campaign_id)?;
+        let category_cap =
+            get_category_duration_cap(&env, campaign.category).unwrap_or(CAMPAIGN_DURATION_MAX_DAYS);
 
-            let total_duration_seconds = new_deadline
-                .checked_sub(start_time)
-                .ok_or(Error::Overflow)?;
-            let total_duration_days = total_duration_seconds / 86400;
+        let total_duration_seconds = new_deadline
+            .checked_sub(start_time)
+            .ok_or(Error::Overflow)?;
+        let total_duration_days = total_duration_seconds / 86400;
 
-            if total_duration_days > category_cap {
-                return Err(Error::InvalidDuration);
-            }
+        if total_duration_days > category_cap {
+            return Err(Error::InvalidDuration);
         }
 
         bump_instance_ttl(&env);

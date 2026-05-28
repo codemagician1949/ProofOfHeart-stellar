@@ -24,9 +24,10 @@ Emitted when the contract is initialized.
 Emitted when a new campaign is created.
 
 - **Topics**: `["campaign_created", campaign_id, creator_address]`
-- **Data**: `campaign_title`
+- **Data**: `(campaign_title, category_u32)`
 - **Emitted By**: `create_campaign()`
 - **Indexing Tip**: Track all campaigns by creator or scan campaign IDs chronologically.
+- **Breaking Change Note**: Consumers expecting a plain title payload must decode `(String, u32)` instead.
 
 #### `campaign_updated`
 Emitted when campaign title and description are updated (before any contributions).
@@ -220,7 +221,7 @@ Emitted when admin privileges are transferred.
 ### Pattern 1: Track All Campaigns
 ```
 Listen for: "campaign_created" events
-Index: Map campaign_id -> (creator, title, timestamp)
+Index: Map campaign_id -> (creator, title, category_u32, timestamp)
 ```
 
 ### Pattern 2: Track Campaign Contributions
