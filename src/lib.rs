@@ -678,13 +678,14 @@ impl ProofOfHeart {
         }
 
         bump_instance_ttl(&env);
+        let event_description = description.clone();
         campaign.title = title.clone();
         campaign.description = description;
 
         set_campaign(&env, campaign_id, &campaign);
 
         env.events()
-            .publish(("campaign_updated", campaign_id), title);
+            .publish(("campaign_updated", campaign_id), (title, event_description));
 
         Ok(())
     }
@@ -2083,6 +2084,10 @@ impl ProofOfHeart {
         let admin = get_admin(&env);
         if caller != campaign.creator && caller != admin {
             return Err(Error::NotAuthorized);
+        }
+
+        if !Self::is_paused(env.clone()) {
+            return Err(Error::ValidationFailed);
         }
 
         bump_instance_ttl(&env);

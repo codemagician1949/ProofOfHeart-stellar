@@ -32,7 +32,7 @@ Emitted when a new campaign is created.
 Emitted when campaign title and description are updated (before any contributions).
 
 - **Topics**: `["campaign_updated", campaign_id]`
-- **Data**: `new_title`
+- **Data**: `(new_title, new_description)`
 - **Emitted By**: `update_campaign()`
 
 #### `campaign_description_updated`
@@ -185,6 +185,14 @@ Emitted when the contract is unpaused by the admin.
 - **Topics**: `["contract_unpaused", admin_address]`
 - **Data**: `()`
 - **Emitted By**: `unpause()`
+
+#### `campaign_resumed`
+Emitted when an authorized caller resumes an actively paused campaign context.
+
+- **Topics**: `["campaign_resumed", campaign_id, caller_address]`
+- **Data**: `()`
+- **Emitted By**: `resume_campaign()`
+- **Behavior**: Not emitted when the contract is already unpaused; that call now returns `ValidationFailed`.
 
 #### `fee_updated`
 Emitted when the platform fee is updated.
