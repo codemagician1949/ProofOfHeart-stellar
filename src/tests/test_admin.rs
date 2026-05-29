@@ -21,6 +21,7 @@ fn test_update_platform_fee() {
 
     // Issue #343: fees above the cap are rejected, not silently clamped.
     let result = client.try_update_platform_fee(&5000);
+    assert_eq!(result.unwrap_err().unwrap(), Error::InvalidPlatformFee);
     assert_eq!(result.unwrap_err().unwrap(), Error::ValidationFailed);
 }
 

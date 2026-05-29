@@ -161,6 +161,10 @@ impl ProofOfHeart {
         .map_err(|_| Error::InvalidTokenContract)?
         .map_err(|_| Error::InvalidTokenContract)?;
 
+        if platform_fee > PLATFORM_FEE_MAX_BPS {
+            return Err(Error::InvalidPlatformFee);
+        }
+
         bump_instance_ttl(&env);
         set_admin(&env, &admin);
         remove_pending_admin(&env);
@@ -301,6 +305,7 @@ impl ProofOfHeart {
             max_contribution_per_user,
             fee_override: None,
             deadline_extended: false,
+            effective_amount_raised: 0,
         };
 
         set_campaign(&env, count, &campaign);
@@ -417,6 +422,7 @@ impl ProofOfHeart {
         client.transfer(&contributor, &env.current_contract_address(), &amount);
 
         campaign.amount_raised += amount;
+        campaign.effective_amount_raised += amount;
         set_campaign(&env, campaign_id, &campaign);
         set_contribution(&env, campaign_id, &contributor, current + amount);
         set_lifetime_contribution(&env, campaign_id, &contributor, lifetime + amount);
@@ -735,7 +741,7 @@ impl ProofOfHeart {
         contributor.require_auth();
         Self::require_not_paused(&env)?;
 
-        let campaign = get_campaign_or_error(&env, campaign_id)?;
+        let mut campaign = get_campaign_or_error(&env, campaign_id)?;
 
         let failed_due_to_goal = env.ledger().timestamp() > campaign.deadline
             && campaign.amount_raised < campaign.funding_goal;
@@ -758,6 +764,12 @@ impl ProofOfHeart {
         // Decrement contributor count on full refund
         // (the contributor no longer has any contribution to this campaign)
         decrement_contributor_count(&env, campaign_id);
+
+        campaign.effective_amount_raised = campaign
+            .effective_amount_raised
+            .checked_sub(amount)
+            .ok_or(Error::Overflow)?;
+        set_campaign(&env, campaign_id, &campaign);
 
         let total_raised = get_total_raised_global(&env);
         set_total_raised_global(
@@ -844,7 +856,7 @@ impl ProofOfHeart {
         if contribution == 0 {
             return Err(Error::ValidationFailed);
         }
-        if campaign.amount_raised == 0 {
+        if campaign.effective_amount_raised == 0 {
             return Err(Error::AmountRaisedIsZero);
         }
 
@@ -852,7 +864,7 @@ impl ProofOfHeart {
         let contributor_pool = (total_pool * (campaign.revenue_share_percentage as i128)) / 10000;
         let total_due = contribution
             .checked_mul(contributor_pool)
-            .and_then(|n| n.checked_div(campaign.amount_raised))
+            .and_then(|n| n.checked_div(campaign.effective_amount_raised))
             .ok_or(Error::Overflow)?;
         let already_claimed = get_revenue_claimed(&env, campaign_id, &contributor);
         let claimable = total_due - already_claimed;
@@ -1347,6 +1359,7 @@ impl ProofOfHeart {
         assert_admin(&env, &admin)?;
         Self::require_not_paused(&env)?;
         if new_fee > PLATFORM_FEE_MAX_BPS {
+            return Err(Error::InvalidPlatformFee);
             return Err(Error::ValidationFailed);
         }
         let old_fee = get_platform_fee(&env);

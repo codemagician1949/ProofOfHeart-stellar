@@ -102,13 +102,7 @@ fn test_platform_fee_cap_enforcement() {
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let creator = Address::generate(&env);
-    let contributor = Address::generate(&env);
-
     let token_address = env.register_stellar_asset_contract(admin.clone());
-    let token = TokenClient::new(&env, &token_address);
-    let token_admin = TokenAdminClient::new(&env, &token_address);
-
     let contract_id = env.register_contract(None, ProofOfHeart);
     let client = ProofOfHeartClient::new(&env, &contract_id);
 
@@ -1065,6 +1059,7 @@ fn test_update_platform_fee() {
 
     // Issue #343: fees above the cap are rejected, not silently clamped.
     let result = client.try_update_platform_fee(&5000);
+    assert_eq!(result.unwrap_err().unwrap(), Error::InvalidPlatformFee);
     assert_eq!(result.unwrap_err().unwrap(), Error::ValidationFailed);
 }
 

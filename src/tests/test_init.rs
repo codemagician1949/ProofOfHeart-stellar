@@ -15,16 +15,12 @@ fn test_platform_fee_cap_enforcement() {
     env.mock_all_auths();
 
     let admin = Address::generate(&env);
-    let creator = Address::generate(&env);
-    let contributor = Address::generate(&env);
-
     let token_address = env.register_stellar_asset_contract(admin.clone());
-    let token = soroban_sdk::token::Client::new(&env, &token_address);
-    let token_admin = soroban_sdk::token::StellarAssetClient::new(&env, &token_address);
-
     let contract_id = env.register_contract(None, crate::ProofOfHeart);
     let client = crate::ProofOfHeartClient::new(&env, &contract_id);
 
+    let res = client.try_init(&admin, &token_address, &5000);
+    assert_eq!(res.unwrap_err().unwrap(), Error::InvalidPlatformFee);
     // Issue #343: init rejects fees above the cap rather than silently clamping.
     let res = client.try_init(&admin, &token_address, &5000);
     assert_eq!(res.unwrap_err().unwrap(), Error::ValidationFailed);
