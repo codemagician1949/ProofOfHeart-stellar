@@ -1,5 +1,7 @@
 use super::*;
-use soroban_sdk::{testutils::Ledger, Address, Env, testutils::Address as _, testutils::Events as _};
+use soroban_sdk::{
+    testutils::Address as _, testutils::Events as _, testutils::Ledger, Address, Env,
+};
 
 use crate::test::setup_env;
 
@@ -7,7 +9,7 @@ use crate::test::setup_env;
 
 #[test]
 fn test_migrate_success() {
-    let (env, admin, _, _, _, _, _, client) = setup_env();
+    let (_env, admin, _, _, _, _, _, client) = setup_env();
     // version is 1 after init; migrate from 1 → CONTRACT_VERSION (1)
     let result = client.try_migrate(&admin, &1u32);
     assert!(result.is_ok());
@@ -281,7 +283,7 @@ fn test_set_personal_cap_cannot_exceed_max_contribution_per_user() {
 // ── #354 vote weight checked addition ──
 #[test]
 fn test_vote_weight_overflow_fails() {
-    let (env, admin, creator, contributor, _, token, token_admin, client) = setup_env();
+    let (env, _admin, creator, contributor, _, _token, token_admin, client) = setup_env();
     let campaign_id = client.create_campaign(&make_campaign_params_simple(&env, &creator));
 
     // Mint contributor tokens
@@ -289,7 +291,9 @@ fn test_vote_weight_overflow_fails() {
 
     // Set high weight manually in storage to simulate a whale or accumulation that would overflow i128::MAX
     env.as_contract(&client.address, || {
-        env.storage().persistent().set(&DataKey::ApproveWeight(campaign_id), &(i128::MAX - 500));
+        env.storage()
+            .persistent()
+            .set(&DataKey::ApproveWeight(campaign_id), &(i128::MAX - 500));
     });
 
     // Cast a vote with balance 501, which overflows i128::MAX when added to i128::MAX - 500
